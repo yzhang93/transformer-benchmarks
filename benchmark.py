@@ -244,7 +244,7 @@ def run_pytorch(use_gpu, model_names, model_class, precision, num_threads, batch
 
 
 def run_mlir(use_gpu, model_names, model_class, precision, num_threads, batch_sizes, sequence_lengths,
-                   repeat_times, cache_dir, verbose):
+                   repeat_times, cache_dir, verbose, use_search):
     results = []
 
     from iree import runtime as ireert
@@ -299,7 +299,14 @@ def run_mlir(use_gpu, model_names, model_class, precision, num_threads, batch_si
         backend_config = "cuda"
         args = ["--iree-cuda-llvm-target-arch=sm_80", "--iree-hal-cuda-disable-loop-nounroll-wa", "--iree-enable-fusion-with-reduction-ops"]
 
-    compiler_module = tfc.compile_module(BertModule(), exported_names = ["predict"], import_only=True)
+    if use_search:
+        ARITFACTS_DIR = os.getcwd()
+        mlir_path = os.path.join(ARITFACTS_DIR, "model-tiled.mlir")
+        with open(mlir_path, "rb") as input_file:
+            compiler_module = input_file.read()
+        print("Using model with searched parameters.")
+    else:
+        compiler_module = tfc.compile_module(BertModule(), exported_names = ["predict"], import_only=True)
     flatbuffer_blob = compile_str(compiler_module, target_backends=[backend], extra_args=args)
     #flatbuffer_blob = compile_str(compiler_module, target_backends=[backend])
 
@@ -311,13 +318,14 @@ def run_mlir(use_gpu, model_names, model_class, precision, num_threads, batch_si
     ctx = ireert.SystemContext(config=config)
     ctx.add_vm_module(vm_module)
     BertCompiled = ctx.modules.module
-
-    #Dump module
-    ARITFACTS_DIR = os.getcwd()
-    mlir_path = os.path.join(ARITFACTS_DIR, "model.mlir")
-    with open(mlir_path, "wt") as output_file:
-        output_file.write(compiler_module.decode('utf-8'))
-    print(f"Wrote MLIR to path '{mlir_path}'")
+    
+    if not use_search:
+        #Dump module
+        ARITFACTS_DIR = os.getcwd()
+        mlir_path = os.path.join(ARITFACTS_DIR, "model.mlir")
+        with open(mlir_path, "wt") as output_file:
+            output_file.write(compiler_module.decode('utf-8'))
+        print(f"Wrote MLIR to path '{mlir_path}'")
 
     #result = BertCompiled.predict(encoded_input["input_ids"], encoded_input["attention_mask"], encoded_input["token_type_ids"])
     #print(result)
@@ -592,6 +600,8 @@ def parse_arguments():
     parser.set_defaults(disable_ort_io_binding=False)
 
     parser.add_argument("-n", "--num_threads", required=False, nargs="+", type=int, default=[0], help="Threads to use")
+    
+    parser.add_argument("--use_search", required=False, action="store_true", help="Use searched model")
 
     args = parser.parse_args()
     return args
@@ -652,7 +662,7 @@ def main():
         if enable_mlir:
             results += run_mlir(args.use_gpu, args.models, args.model_class, args.precision, num_threads,
                             args.batch_sizes, args.sequence_lengths, args.test_times, args.cache_dir,
-                            args.verbose)
+                            args.verbose, args.use_search)
 
 
         model_fusion_statistics = {}

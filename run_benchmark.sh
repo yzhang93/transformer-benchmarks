@@ -293,7 +293,7 @@ run_one_test() {
     if [ "$run_mlir" = true ] ; then
       echo python $benchmark_script -e mlir -m $1 $benchmark_options $2 $3 $4 >> benchmark.log
       if [ "$run_tests" = true ] ; then
-        python $benchmark_script -e mlir -m $1 $benchmark_options $2 $3 $4
+        python $benchmark_script -e mlir -m $1 $benchmark_options $2 $3 $4 --use_search
       fi
     fi
 }
